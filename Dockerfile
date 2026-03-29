@@ -6,11 +6,11 @@ RUN rm /etc/nginx/conf.d/default.conf
 # Copier la configuration nginx
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copier TOUS les fichiers dans le dossier public vers nginx
+# Copier TOUS les fichiers public vers nginx
 COPY public/ /usr/share/nginx/html/
 
 # Exposer le port
 EXPOSE 8080
 
-# Démarrer nginx en premier plan
+# Démarrer nginx
 CMD ["nginx", "-g", "daemon off;"]

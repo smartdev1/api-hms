@@ -1,6 +1,6 @@
 window.onload = function() {
   window.ui = SwaggerUIBundle({
-    url: "/api.yaml",  
+    url: "hmis-api.yaml",  
     dom_id: '#swagger-ui',
     deepLinking: true,
     presets: [
