@@ -10,7 +10,7 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY public/index.html /usr/share/nginx/html/index.html
 
 # Copier la documentation Swagger
-COPY docs/api.yaml /usr/share/nginx/html/docs/api.yaml
+COPY docs/hmis-api.yaml /usr/share/nginx/html/docs/hmis-api.yaml
 COPY docs/index.html /usr/share/nginx/html/docs/index.html
 
 # Copier le swagger-initializer
