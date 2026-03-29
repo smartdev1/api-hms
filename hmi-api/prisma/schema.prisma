@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+}
+
+// ENUMS
+enum Role {
+  admin
+  etablissement
+  partenaire
+}
+
+enum TypeEtablissement {
+  bar
+  maquis
+  cave
+  boite_nuit
+  restaurant
+  hotel
+  autre
+}
+
+enum StatutEtablissement {
+  en_attente
+  actif
+  suspendu
+  inactif
+}
+
+enum StatutCapture {
+  recu
+  en_traitement
+  traite
+  echec
+  identifie
+  non_identifie
+}
+
+enum SourceAPI {
+  acrcloud
+  audd
+}
+
+enum TypeRapport {
+  diffusions
+  etablissements
+  artistes
+  global
+}
+
+enum FormatRapport {
+  pdf
+  excel
+  json
+}
+
+enum StatutJob {
+  en_attente
+  en_cours
+  termine
+  erreur
+}
+
+// MODELS
+
+model Utilisateur {
+  id                String         @id @default(auto()) @map("_id") @db.ObjectId
+  nom               String
+  email             String         @unique
+  telephone         String?        @unique
+  mot_de_passe      String
+  role              Role           @default(etablissement)
+  actif             Boolean        @default(true)
+  telephone_verifie Boolean        @default(false)
+  etablissement_id  String?        @db.ObjectId
+  etablissement     Etablissement? @relation(fields: [etablissement_id], references: [id])
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
+
+  rapports RapportJob[]
+}
+
+model Etablissement {
+  id                 String              @id @default(auto()) @map("_id") @db.ObjectId
+  nom                String
+  type               TypeEtablissement
+  adresse            String
+  commune            String
+  ville              String
+  latitude           Float?
+  longitude          Float?
+  telephone          String
+  email              String?             @unique
+  capacite_accueil   Int?
+  horaires_ouverture String?
+  proprietaire_nom   String?
+  statut             StatutEtablissement @default(en_attente)
+  motif              String?             // For suspension/rejection
+  date_inscription   DateTime            @default(now())
+  date_validation    DateTime?
+  valide_par         String?             @db.ObjectId // ObjectId of the admin
+  total_diffusions   Int                 @default(0)
+  derniere_diffusion DateTime?
+  created_at         DateTime            @default(now())
+  updated_at         DateTime            @updatedAt
+
+  utilisateurs Utilisateur[]
+  captures     Capture[]
+  diffusions   Diffusion[]
+}
+
+model Musique {
+  id                    String      @id @default(auto()) @map("_id") @db.ObjectId
+  titre                 String
+  artiste               String
+  album                 String?
+  isrc                  String?
+  label                 String?
+  annee_sortie          Int?
+  genre                 String?
+  duree_totale_secondes Int?
+  source_api            SourceAPI   @default(acrcloud)
+  created_at            DateTime    @default(now())
+
+  captures   Capture[]
+  diffusions Diffusion[]
+}
+
+model Capture {
+  id                       String        @id @default(auto()) @map("_id") @db.ObjectId
+  reference_locale         String?
+  statut                   StatutCapture @default(recu)
+  message                  String?
+  score_confiance          Float?
+  timestamp_capture        DateTime
+  timestamp_identification DateTime?
+  duree_diffusion_secondes Int
+  etablissement_id         String        @db.ObjectId
+  etablissement            Etablissement @relation(fields: [etablissement_id], references: [id])
+  musique_id               String?       @db.ObjectId
+  musique                  Musique?      @relation(fields: [musique_id], references: [id])
+  created_at               DateTime      @default(now())
+
+  diffusions Diffusion[]
+}
+
+model Diffusion {
+  id                  String        @id @default(auto()) @map("_id") @db.ObjectId
+  etablissement_id    String        @db.ObjectId
+  etablissement       Etablissement @relation(fields: [etablissement_id], references: [id])
+  capture_id          String        @db.ObjectId
+  capture             Capture       @relation(fields: [capture_id], references: [id])
+  musique_id          String        @db.ObjectId
+  musique             Musique       @relation(fields: [musique_id], references: [id])
+  timestamp_diffusion DateTime
+  duree_secondes      Int
+  score_confiance     Float
+  created_at          DateTime      @default(now())
+}
+
+model RapportJob {
+  id                 String        @id @default(auto()) @map("_id") @db.ObjectId
+  statut             StatutJob     @default(en_attente)
+  type               TypeRapport
+  format             FormatRapport @default(pdf)
+  date_debut         DateTime
+  date_fin           DateTime
+  demande_par        String        @db.ObjectId
+  utilisateur        Utilisateur   @relation(fields: [demande_par], references: [id])
+  created_at         DateTime      @default(now())
+  termine_at         DateTime?
+  url_telechargement String?
+}
