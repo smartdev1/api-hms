@@ -1,11 +1,13 @@
 FROM swaggerapi/swagger-ui:latest
 
-# Copier le fichier YAML vers un chemin temporaire d'abord
-COPY hmis-api.yaml /tmp/api.yaml
+# Copier le YAML au bon endroit (servi par nginx)
+COPY hmis-api.yaml /usr/share/nginx/html/api.yaml
 
-# Utiliser l'entrypoint de swagger-ui qui gère correctement le fichier
-ENV SWAGGER_JSON=/tmp/api.yaml
+# Remplacer le fichier d'initialisation par défaut par le nôtre
+COPY swagger-initializer.js /usr/share/nginx/html/swagger-initializer.js
+
+# Optionnel : désactiver le fetch du config par défaut
+ENV SWAGGER_URL=/api.yaml
 ENV PORT=8080
 
-# Le port est déjà exposé par l'image de base, mais on le déclare pour clarté
 EXPOSE 8080
