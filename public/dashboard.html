@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>HMIS - Web Dashboard Prototype</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js for data visualization -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg-dark: #f8fafc;
+      --sidebar-bg: #0f172a;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      /* Status Colors */
+      --success: #10b981;
+      --success-bg: #d1fae5;
+      --warning: #f59e0b;
+      --warning-bg: #fef3c7;
+      --danger: #ef4444;
+      --danger-bg: #fee2e2;
+    }
+    
+    * { box-sizing: border-box; font-family: 'Inter', sans-serif; margin: 0; padding: 0; }
+    body { background-color: var(--bg-dark); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
+    
+    /* Sidebar Navigation */
+    .sidebar { width: 260px; background: var(--sidebar-bg); color: #f1f5f9; display: flex; flex-direction: column; flex-shrink: 0; }
+    .sidebar-brand { padding: 24px 20px; font-size: 22px; font-weight: 800; border-bottom: 1px solid #1e293b; letter-spacing: -0.5px; color: white; display:flex; align-items:center; gap:10px; }
+    .nav-group { margin-top: 24px; }
+    .nav-label { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; margin: 0 20px 8px; letter-spacing: 0.5px; }
+    .nav-list { list-style: none; }
+    .nav-item { padding: 12px 20px; cursor: pointer; display: flex; align-items: center; gap: 12px; color: #cbd5e1; transition: 0.2s; font-size: 14px; font-weight: 500; }
+    .nav-item:hover { background: #1e293b; color: white; }
+    .nav-item.active { background: #1e293b; border-left: 4px solid var(--primary); color: white; }
+    .nav-item svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    
+    /* Main Layout */
+    .main-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    
+    /* Topbar */
+    .topbar { height: 68px; background: var(--card-bg); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; padding: 0 24px; flex-shrink: 0; }
+    .role-switcher { display: flex; align-items: center; gap: 16px; background: #f1f5f9; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); }
+    .role-switcher label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+    .role-select { padding: 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 14px; font-weight: 600; background: white; cursor: pointer; outline:none; }
+    .user-profile { display: flex; align-items: center; gap: 12px; }
+    .avatar { width: 36px; height: 36px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;}
+    
+    /* Content Area */
+    .content-area { flex: 1; overflow-y: auto; padding: 32px; }
+    .page { display: none; animation: fadeIn 0.3s ease; }
+    .page.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    
+    h1 { font-size: 26px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.5px; }
+    .page-desc { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+    h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: var(--text-main);}
+    
+    /* Grid & Cards */
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 32px; }
+    .kpi-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+    .kpi-title { font-size: 13px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 12px; }
+    .kpi-value { font-size: 32px; font-weight: 700; color: var(--text-main); }
+    .kpi-trend { font-size: 13px; color: var(--success); font-weight: 500; margin-top: 8px; display: flex; align-items: center; gap: 4px;}
+    
+    .chart-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 32px; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;}
+    
+    /* Tables */
+    .table-container { background: white; border: 1px solid var(--border); border-radius: 12px; overflow: auto; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th { background: #f8fafc; font-weight: 600; color: var(--text-muted); text-transform: uppercase; font-size: 12px; padding: 16px 24px; border-bottom: 1px solid var(--border); white-space: nowrap;}
+    td { padding: 16px 24px; border-bottom: 1px solid var(--border); font-size: 14px; color: var(--text-main); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover { background: #f8fafc; }
+    
+    /* Badges */
+    .badge { padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; display: inline-block; text-align: center;}
+    .badge.success { background: var(--success-bg); color: var(--success); }
+    .badge.warning { background: var(--warning-bg); color: var(--warning); }
+    .badge.danger { background: var(--danger-bg); color: var(--danger); }
+    .badge.active-track { background: #dbeafe; color: #2563eb; }
+    .badge.inactive-track { background: #f1f5f9; color: #64748b; }
+
+    /* Buttons */
+    .btn { padding: 10px 16px; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-main); }
+    .btn-outline:hover { background: #f1f5f9; }
+    .btn-success { background: var(--success); color: white; }
+    .btn-danger { background: var(--danger); color: white; }
+
+    /* Filters */
+    .filters { display: flex; gap: 16px; margin-bottom: 24px; align-items: center; flex-wrap: wrap;}
+    .search-input { padding: 10px 16px; border: 1px solid var(--border); border-radius: 6px; flex: 1; max-width: 350px; font-size: 14px; }
+    .select-filter { padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: white; font-size: 14px; color: var(--text-main); }
+
+    /* Report Builder */
+    .report-grid { display: grid; grid-template-columns: 300px 1fr; gap: 24px; }
+    .report-sidebar { background: white; padding: 24px; border-radius: 12px; border: 1px solid var(--border); }
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
+    .form-group input, .form-group select { width: 100%; border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: 14px; }
+    
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-brand" onclick="">
+      <svg width="24" height="24" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" stroke="white" fill="none" stroke-width="2"/><circle cx="6" cy="18" r="3" stroke="white" fill="none" stroke-width="2"/><circle cx="18" cy="16" r="3" stroke="white" fill="none" stroke-width="2"/></svg>
+      HMIS Admin
+    </div>
+    
+    <div class="nav-group">
+      <div class="nav-label">Core</div>
+      <ul class="nav-list">
+        <li class="nav-item active" onclick="navTo('dashboard')" id="nav-dashboard">
+          <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> Dashboard
+        </li>
+        <li class="nav-item" onclick="navTo('establishments')" id="nav-establishments">
+          <svg viewBox="0 0 24 24"><path d="M3 21h18M3 7v14M21 7v14M6 21V3h12v18M9 7h6M9 11h6M9 15h6"/></svg> Establishments
+        </li>
+        <li class="nav-item" onclick="navTo('logs')" id="nav-logs">
+          <svg viewBox="0 0 24 24"><path d="M12 20v-8M6 20V4M18 20v-4"/></svg> Detection Logs
+        </li>
+      </ul>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Analytics & Export</div>
+      <ul class="nav-list">
+        <li class="nav-item" onclick="navTo('analytics')" id="nav-analytics">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg> Analytics
+        </li>
+        <li class="nav-item" onclick="navTo('reports')" id="nav-reports">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> Reports (BURIDA)
+        </li>
+      </ul>
+    </div>
+
+    <div class="nav-group" id="menu-admin">
+      <div class="nav-label">System Admin</div>
+      <ul class="nav-list">
+        <li class="nav-item" onclick="navTo('users')" id="nav-users">
+          <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg> Users & Roles
+        </li>
+      </ul>
+    </div>
+  </aside>
+
+  <!-- Main Area -->
+  <main class="main-wrapper">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="role-switcher">
+        <label>View Dashboard As:</label>
+        <select class="role-select" id="roleSelect" onchange="changeRole()">
+          <option value="admin">System Admin (HANKES)</option>
+          <option value="manager">Analyst / Manager</option>
+          <option value="burida">BURIDA Institutional User</option>
+        </select>
+      </div>
+      <div class="user-profile">
+        <div style="text-align: right;">
+          <div style="font-size: 14px; font-weight: 600;" id="user-name">Aristide Adouko</div>
+          <div style="font-size: 12px; color: var(--text-muted);" id="user-role-label">System Admin</div>
+        </div>
+        <div class="avatar">AA</div>
+      </div>
+    </header>
+
+    <!-- Content Area -->
+    <div class="content-area">
+
+      <!-- Global Dashboard Page -->
+      <div id="page-dashboard" class="page active">
+        <h1>Global Dashboard</h1>
+        <p class="page-desc">Overview of music tracking telemetry across all venues.</p>
+
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-title">Total Establishments</div>
+            <div class="kpi-value">20</div>
+            <div class="kpi-trend">↑ 2 pending approval</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title">Active Trackers</div>
+            <div class="kpi-value" style="color: var(--success);">14</div>
+            <div class="kpi-trend">70% utilization rate</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title">Total Detections</div>
+            <div class="kpi-value">124,592</div>
+            <div class="kpi-trend">↑ 12% from last month</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-title">Detections Today</div>
+            <div class="kpi-value" style="color: var(--primary);">4,208</div>
+            <div class="kpi-trend">Updating live...</div>
+          </div>
+        </div>
+
+        <div class="chart-grid">
+          <div class="card">
+            <div class="card-header" style="margin-bottom: 12px;">
+              <h2>Detections Over Time (Last 30 Days)</h2>
+            </div>
+            <div style="position: relative; height: 250px; width: 100%;">
+              <canvas id="mainLineChart"></canvas>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header" style="margin-bottom: 12px;">
+              <h2>Top Artists (This Week)</h2>
+            </div>
+            <div style="position: relative; height: 250px; width: 100%;">
+              <canvas id="barChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Establishments Page -->
+      <div id="page-establishments" class="page">
+        <h1>Establishments Management</h1>
+        <p class="page-desc">Monitor and control hardware tracking status for venues.</p>
+        
+        <div class="filters">
+          <input type="text" class="search-input" placeholder="Search establishment name or location...">
+          <select class="select-filter">
+            <option>All Types</option>
+            <option>Nightclub</option>
+            <option>Bar</option>
+            <option>Restaurant</option>
+          </select>
+          <select class="select-filter">
+            <option>All Statuses</option>
+            <option>Approved</option>
+            <option>Pending</option>
+          </select>
+          <button class="btn btn-primary" id="btn-add-est" style="margin-left:auto;">+ Add Establishment</button>
+        </div>
+
+        <div class="table-container">
+          <table id="estTable">
+            <thead>
+              <tr>
+                <th>Venue Name</th>
+                <th>Type</th>
+                <th>Location</th>
+                <th>Validation Status</th>
+                <th>Tracking Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="estTableBody">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Logs Page -->
+      <div id="page-logs" class="page">
+        <h1>Music Detection Logs</h1>
+        <p class="page-desc">Raw telemetry data from active establishment microphones.</p>
+        
+        <div class="filters">
+          <input type="text" class="search-input" placeholder="Search track name or artist...">
+          <select class="select-filter">
+            <option>All Establishments</option>
+            <option>The Neon Club</option>
+            <option>Le Plateau Lounge</option>
+          </select>
+          <input type="date" class="select-filter">
+        </div>
+
+        <div class="table-container">
+          <table id="logsTable">
+            <thead>
+              <tr>
+                <th>Track Name</th>
+                <th>Artist</th>
+                <th>Establishment</th>
+                <th>Timestamp</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody id="logsTableBody">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Reports Page (BURIDA) -->
+      <div id="page-reports" class="page">
+        <h1>Institutional Reports</h1>
+        <p class="page-desc">Generate official royalty and tracking analytics reports.</p>
+
+        <div class="report-grid">
+          <div class="report-sidebar">
+            <h2 style="font-size: 16px;">Report Configuration</h2>
+            <div class="form-group" style="margin-top: 20px;">
+              <label>Report Type</label>
+              <select>
+                <option>Monthly Track Summary</option>
+                <option>Establishment Audit</option>
+                <option>Artist Frequency</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Date Range</label>
+              <select>
+                <option>This Month (March 2026)</option>
+                <option>Last Month (Feb 2026)</option>
+                <option>Q1 2026</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Format</label>
+              <select>
+                <option>PDF Document</option>
+                <option>Excel Split-Sheet (.xlsx)</option>
+                <option>Raw CSV Data</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" style="width: 100%; justify-content: center; margin-top: 10px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Generate & Download
+            </button>
+          </div>
+          
+          <div class="card">
+            <h2>Recent Generated Reports</h2>
+            <div class="table-container" style="box-shadow: none; border-radius: 8px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Report Name</th>
+                    <th>Date Generated</th>
+                    <th>Format</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>February 2026 Global Rollup</td>
+                    <td>Mar 1, 2026</td>
+                    <td><span class="badge" style="background: #fee2e2; color: #dc2626;">PDF</span></td>
+                    <td><a href="#" style="color: var(--primary); font-size: 13px; font-weight: 500;">Download View</a></td>
+                  </tr>
+                  <tr>
+                    <td>Establishment Audit - Abidjan South</td>
+                    <td>Feb 28, 2026</td>
+                    <td><span class="badge" style="background: #dcfce7; color: #16a34a;">Excel</span></td>
+                    <td><a href="#" style="color: var(--primary); font-size: 13px; font-weight: 500;">Download View</a></td>
+                  </tr>
+                  <tr>
+                    <td>Artist Frequency Q4 2025</td>
+                    <td>Jan 5, 2026</td>
+                    <td><span class="badge" style="background: #f1f5f9; color: #475569;">CSV</span></td>
+                    <td><a href="#" style="color: var(--primary); font-size: 13px; font-weight: 500;">Download View</a></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Users Page -->
+      <div id="page-users" class="page">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+          <div>
+            <h1>User Management</h1>
+            <p class="page-desc" style="margin: 0;">System administration access only.</p>
+          </div>
+          <button class="btn btn-primary">+ Invite User</button>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Last Login</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Aristide Adouko</td>
+                <td>admin@hankes.com</td>
+                <td><span class="badge" style="background: #e0e7ff; color: #4f46e5;">Admin</span></td>
+                <td><span class="badge success">Active</span></td>
+                <td>Just now</td>
+              </tr>
+              <tr>
+                <td>Jean Paul</td>
+                <td>jean@burida.ci</td>
+                <td><span class="badge" style="background: #fef3c7; color: #d97706;">BURIDA</span></td>
+                <td><span class="badge success">Active</span></td>
+                <td>2 hours ago</td>
+              </tr>
+              <tr>
+                <td>Marc Manager</td>
+                <td>marc@hankes.com</td>
+                <td><span class="badge" style="background: #f3f4f6; color: #374151;">Analyst</span></td>
+                <td><span class="badge success">Active</span></td>
+                <td>1 day ago</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- JavaScript logic & Mock Data Generator -->
+  <script>
+    /* Data Generation */
+    const venueTypes = ['Bar', 'Nightclub', 'Restaurant', 'Hotel'];
+    const regions = ['Cocody', 'Plateau', 'Marcory', 'Zone 4', 'Yopougon'];
+    const prefixes = ['Le', 'The', 'Club', 'Bar', 'Lounge'];
+    const names = ['Neon', 'Bling', 'Eclipse', 'Oasis', 'Safari', 'VIP', 'Infinity', 'Paradox', 'Sunset'];
+    
+    const artists = [
+      'The Weeknd', 'Dua Lipa', 'Burna Boy', 'Wizkid', 'Davido', 'Asake', 'Rema', 
+      'Ayra Starr', 'Tyla', 'Drake', 'Taylor Swift', 'Bad Bunny', 'Ed Sheeran', 
+      'Rihanna', 'Beyonce', 'Kendrick Lamar', 'Magic System', 'Alpha Blondy', 
+      'Josey', 'Didi B', 'Fally Ipupa', 'Kofi Olomide', 'Arafat DJ'
+    ];
+    
+    function randomTrack() {
+      const titles = ['Love', 'Night', 'Vibes', 'Dance', 'Fire', 'Heart', 'Party', 'Life'];
+      return titles[Math.floor(Math.random()*titles.length)] + " " + titles[Math.floor(Math.random()*titles.length)];
+    }
+
+    const establishments = [];
+    for(let i=1; i<=20; i++) {
+        const statusRand = Math.random();
+        const estStatus = statusRand > 0.8 ? 'Pending' : (statusRand < 0.1 ? 'Rejected' : 'Approved');
+        const tracking = estStatus === 'Approved' && Math.random() > 0.3 ? 'Active' : 'Inactive';
+        
+        establishments.push({
+            id: i,
+            name: `${prefixes[Math.floor(Math.random()*prefixes.length)]} ${names[Math.floor(Math.random()*names.length)]} ${i}`,
+            type: venueTypes[Math.floor(Math.random()*venueTypes.length)],
+            location: regions[Math.floor(Math.random()*regions.length)],
+            status: estStatus,
+            tracking: tracking
+        });
+    }
+
+    const logs = [];
+    for(let i=0; i<120; i++) {
+        const est = establishments[Math.floor(Math.random()*establishments.length)];
+        // Generate random time today
+        const d = new Date();
+        d.setHours(d.getHours() - Math.floor(Math.random()*24));
+        d.setMinutes(Math.floor(Math.random()*60));
+        
+        logs.push({
+            track: randomTrack(),
+            artist: artists[Math.floor(Math.random()*artists.length)],
+            establishment: est.name,
+            timestamp: d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+            confidence: (85 + Math.random()*14).toFixed(1) + '%'
+        });
+    }
+
+    /* Populate UI */
+    function renderEstablishments(role) {
+      const tbody = document.getElementById('estTableBody');
+      tbody.innerHTML = '';
+      establishments.forEach(est => {
+        let statusBadge = est.status === 'Approved' ? 'success' : (est.status === 'Pending' ? 'warning' : 'danger');
+        let trackBadge = est.tracking === 'Active' ? 'active-track' : 'inactive-track';
+        
+        // Role based actions
+        let actions = '';
+        if(role === 'admin') {
+           if(est.status === 'Pending') {
+               actions = `<button class="btn btn-success" style="padding:4px 8px; font-size:11px;">Approve</button>
+                          <button class="btn btn-danger" style="padding:4px 8px; font-size:11px;">Reject</button>`;
+           } else {
+               actions = `<button class="btn btn-outline" style="padding:4px 8px; font-size:11px;">Edit</button>`;
+           }
+        } else if (role === 'manager') {
+           actions = `<button class="btn btn-outline" style="padding:4px 8px; font-size:11px;">View</button>`;
+        } else {
+           actions = `-`; // BURIDA can't edit establishments
+        }
+
+        tbody.innerHTML += `
+          <tr>
+            <td style="font-weight: 500;">${est.name}</td>
+            <td>${est.type}</td>
+            <td>${est.location}</td>
+            <td><span class="badge ${statusBadge}">${est.status}</span></td>
+            <td><span class="badge ${trackBadge}">${est.tracking}</span></td>
+            <td>${actions}</td>
+          </tr>
+        `;
+      });
+    }
+
+    function renderLogs() {
+      const tbody = document.getElementById('logsTableBody');
+      tbody.innerHTML = '';
+      logs.slice(0, 50).forEach(log => { // display first 50
+        tbody.innerHTML += `
+          <tr>
+            <td style="font-weight: 500;">${log.track}</td>
+            <td>${log.artist}</td>
+            <td>${log.establishment}</td>
+            <td style="color:var(--text-muted);">${log.timestamp}</td>
+            <td><span style="color:var(--success); font-weight:600;">${log.confidence}</span></td>
+          </tr>
+        `;
+      });
+    }
+
+    /* Navigation & Tabs */
+    function navTo(pageId) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      
+      const pg = document.getElementById('page-' + pageId);
+      if(pg) pg.classList.add('active');
+      
+      const navItem = document.getElementById('nav-' + pageId);
+      if(navItem) navItem.classList.add('active');
+    }
+
+    /* Role Management */
+    let currentRole = 'admin';
+    function changeRole() {
+      currentRole = document.getElementById('roleSelect').value;
+      const userName = document.getElementById('user-name');
+      const userRole = document.getElementById('user-role-label');
+      
+      if(currentRole === 'admin') {
+        userName.textContent = 'Aristide Adouko';
+        userRole.textContent = 'System Admin';
+        document.getElementById('menu-admin').style.display = 'block';
+        document.getElementById('btn-add-est').style.display = 'inline-flex';
+      } else if(currentRole === 'manager') {
+        userName.textContent = 'Marc Manager';
+        userRole.textContent = 'Analyst';
+        document.getElementById('menu-admin').style.display = 'none';
+        document.getElementById('btn-add-est').style.display = 'none';
+      } else if(currentRole === 'burida') {
+        userName.textContent = 'Jean Paul';
+        userRole.textContent = 'BURIDA Representative';
+        document.getElementById('menu-admin').style.display = 'none';
+        document.getElementById('btn-add-est').style.display = 'none';
+      }
+      
+      // Re-render UI based on rules
+      renderEstablishments(currentRole);
+      
+      // Optional: push BURIDA directly to reports mostly, but we'll leave them on dashboard for demo
+    }
+
+    /* Init Charts */
+    window.onload = () => {
+      renderEstablishments('admin');
+      renderLogs();
+
+      // Line Chart (Detections)
+      const ctxLine = document.getElementById('mainLineChart').getContext('2d');
+      new Chart(ctxLine, {
+          type: 'line',
+          data: {
+              labels: ['Mar 1', 'Mar 5', 'Mar 10', 'Mar 15', 'Mar 20', 'Mar 25', 'Mar 29'],
+              datasets: [{
+                  label: 'Tracks Detected',
+                  data: [1200, 1900, 1500, 2200, 3100, 2800, 4208],
+                  borderColor: '#2563eb',
+                  backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                  borderWidth: 3,
+                  tension: 0.4,
+                  fill: true
+              }]
+          },
+          options: { plugins: { legend: {display: false} }, scales: { y: { beginAtZero: true } }, maintainAspectRatio: false }
+      });
+
+      // Bar Chart (Top Artists)
+      const ctxBar = document.getElementById('barChart').getContext('2d');
+      new Chart(ctxBar, {
+          type: 'bar',
+          data: {
+              labels: ['The Weeknd', 'Dua Lipa', 'Burna Boy', 'Asake', 'Didi B'],
+              datasets: [{
+                  label: 'Plays',
+                  data: [1240, 1100, 950, 890, 750],
+                  backgroundColor: ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe'],
+                  borderRadius: 4
+              }]
+          },
+          options: { plugins: { legend: {display: false} }, maintainAspectRatio: false }
+      });
+    };
+  </script>
+</body>
+</html>

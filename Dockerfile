@@ -6,7 +6,7 @@ RUN rm /etc/nginx/conf.d/default.conf
 # Copier la configuration nginx
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copier TOUS les fichiers public vers nginx
+# Copier TOUS les fichiers public vers nginx (inclut dashboard.html)
 COPY public/ /usr/share/nginx/html/
 
 # Exposer le port
