@@ -1,13 +1,23 @@
-FROM swaggerapi/swagger-ui:latest
+FROM nginx:alpine
 
-# Copier le YAML au bon endroit (servi par nginx)
-COPY hmis-api.yaml /usr/share/nginx/html/api.yaml
+# Supprimer la config par défaut
+RUN rm /etc/nginx/conf.d/default.conf
 
-# Remplacer le fichier d'initialisation par défaut par le nôtre
-COPY swagger-initializer.js /usr/share/nginx/html/swagger-initializer.js
+# Copier la configuration nginx
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Optionnel : désactiver le fetch du config par défaut
-ENV SWAGGER_URL=/api.yaml
-ENV PORT=8080
+# Copier le prototype
+COPY public/index.html /usr/share/nginx/html/index.html
 
+# Copier la documentation Swagger
+COPY docs/api.yaml /usr/share/nginx/html/docs/api.yaml
+COPY docs/index.html /usr/share/nginx/html/docs/index.html
+
+# Copier le swagger-initializer
+COPY public/swagger-initializer.js /usr/share/nginx/html/swagger-initializer.js
+
+# Exposer le port
 EXPOSE 8080
+
+# Démarrer nginx
+CMD ["nginx", "-g", "daemon off;"]
