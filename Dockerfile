@@ -6,18 +6,11 @@ RUN rm /etc/nginx/conf.d/default.conf
 # Copier la configuration nginx
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copier le prototype
-COPY public/index.html /usr/share/nginx/html/index.html
-
-# Copier la documentation Swagger
-COPY docs/hmis-api.yaml /usr/share/nginx/html/docs/hmis-api.yaml
-COPY docs/index.html /usr/share/nginx/html/docs/index.html
-
-# Copier le swagger-initializer
-COPY public/swagger-initializer.js /usr/share/nginx/html/swagger-initializer.js
+# Copier TOUS les fichiers dans le dossier public vers nginx
+COPY public/ /usr/share/nginx/html/
 
 # Exposer le port
 EXPOSE 8080
 
-# Démarrer nginx
+# Démarrer nginx en premier plan
 CMD ["nginx", "-g", "daemon off;"]
