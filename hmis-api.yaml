@@ -1,0 +1,2376 @@
+openapi: 3.0.3
+info:
+  title: HMIS — Hankes Music Intelligence System API
+  description: |
+    API REST complète du système HMIS de recensement et de suivi intelligent
+    des diffusions musicales en Côte d'Ivoire.
+
+    ## Authentification
+    Tous les endpoints protégés nécessitent un **Bearer JWT** dans le header `Authorization`.
+    Les tokens ont une durée de vie de **15 minutes**. Utilisez `/auth/refresh` pour renouveler.
+
+    ## Rôles
+    | Rôle | Description |
+    |------|-------------|
+    | `admin` | Administrateur HANKES — accès total |
+    | `etablissement` | Gérant d'établissement — accès restreint à ses propres données |
+    | `partenaire` | Partenaire institutionnel (BURIDA) — lecture seule agrégée |
+
+    ## Codes d'erreur globaux
+    | Code | Signification |
+    |------|--------------|
+    | 400 | Requête invalide (validation échouée) |
+    | 401 | Non authentifié (token absent ou expiré) |
+    | 403 | Accès interdit (rôle insuffisant) |
+    | 404 | Ressource introuvable |
+    | 409 | Conflit (ressource déjà existante) |
+    | 422 | Entité non traitable |
+    | 429 | Trop de requêtes (rate limiting) |
+    | 500 | Erreur interne serveur |
+
+  version: 1.0.0
+  contact:
+    name: Équipe HMIS
+    email: contact@hmis-project.ci
+  license:
+    name: Propriétaire — Usage réservé à HANKES
+
+servers:
+  - url: https://api.hmis-project.ci/v1
+    description: Production
+  - url: https://staging-api.hmis-project.ci/v1
+    description: Staging / Recette
+  - url: http://localhost:3000/v1
+    description: Développement local
+
+tags:
+  - name: Auth
+    description: Authentification, gestion des sessions et des tokens
+  - name: Utilisateurs
+    description: Gestion des comptes et profils utilisateurs
+  - name: Etablissements
+    description: Recensement et gestion des établissements musicaux
+  - name: Audio & Reconnaissance
+    description: Capture, upload et reconnaissance musicale
+  - name: Diffusions
+    description: Logs de diffusions identifiées
+  - name: Dashboard
+    description: KPIs et statistiques globales (admin)
+  - name: Reporting
+    description: Génération et export de rapports
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────────────────────────────────────────
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token JWT obtenu via POST /auth/login
+
+  # ── SCHEMAS ────────────────────────────────────────────────────────────────
+  schemas:
+
+    # ── AUTH ──────────────────────────────────────────────────────────────────
+    RegisterRequest:
+      type: object
+      required: [nom, email, mot_de_passe, role]
+      properties:
+        nom:
+          type: string
+          example: Kouadio Jean-Baptiste
+        email:
+          type: string
+          format: email
+          example: jean@hmis-project.ci
+        telephone:
+          type: string
+          example: "+2250707010101"
+        mot_de_passe:
+          type: string
+          format: password
+          minLength: 8
+          example: MonMotDePasse#2026
+        role:
+          type: string
+          enum: [admin, etablissement, partenaire]
+          example: etablissement
+
+    LoginRequest:
+      type: object
+      required: [email, mot_de_passe]
+      properties:
+        email:
+          type: string
+          format: email
+          example: jean@hmis-project.ci
+        mot_de_passe:
+          type: string
+          format: password
+          example: MonMotDePasse#2026
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT à courte durée (15 min)
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refresh_token:
+          type: string
+          description: Token de renouvellement (7 jours)
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        expires_in:
+          type: integer
+          description: Durée de validité de l'access_token en secondes
+          example: 900
+        role:
+          type: string
+          enum: [admin, etablissement, partenaire]
+          example: etablissement
+        utilisateur_id:
+          type: string
+          format: uuid
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+
+    OtpSendRequest:
+      type: object
+      required: [telephone]
+      properties:
+        telephone:
+          type: string
+          example: "+2250707010101"
+
+    OtpVerifyRequest:
+      type: object
+      required: [telephone, code]
+      properties:
+        telephone:
+          type: string
+          example: "+2250707010101"
+        code:
+          type: string
+          minLength: 6
+          maxLength: 6
+          example: "483021"
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          example: jean@hmis-project.ci
+
+    PasswordResetConfirm:
+      type: object
+      required: [token, nouveau_mot_de_passe]
+      properties:
+        token:
+          type: string
+          example: reset-token-abc123
+        nouveau_mot_de_passe:
+          type: string
+          format: password
+          minLength: 8
+          example: NouveauMotDePasse#2026
+
+    # ── UTILISATEUR ───────────────────────────────────────────────────────────
+    Utilisateur:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        nom:
+          type: string
+          example: Kouadio Jean-Baptiste
+        email:
+          type: string
+          format: email
+          example: jean@hmis-project.ci
+        telephone:
+          type: string
+          example: "+2250707010101"
+        role:
+          type: string
+          enum: [admin, etablissement, partenaire]
+          example: etablissement
+        actif:
+          type: boolean
+          example: true
+        telephone_verifie:
+          type: boolean
+          example: true
+        etablissement_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Renseigné uniquement si role = etablissement
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-03-01T08:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-03-15T10:30:00Z"
+
+    UtilisateurUpdate:
+      type: object
+      properties:
+        nom:
+          type: string
+          example: Kouadio Jean-Baptiste
+        telephone:
+          type: string
+          example: "+2250707010102"
+
+    # ── ETABLISSEMENT ─────────────────────────────────────────────────────────
+    EtablissementCreate:
+      type: object
+      required: [nom, type, adresse, commune, ville]
+      properties:
+        nom:
+          type: string
+          example: Le Maquis de la Joie
+        type:
+          type: string
+          enum: [bar, maquis, cave, boite_nuit, restaurant, hotel, autre]
+          example: maquis
+        adresse:
+          type: string
+          example: Rue des Jardins, Cocody
+        commune:
+          type: string
+          example: Cocody
+        ville:
+          type: string
+          example: Abidjan
+        latitude:
+          type: number
+          format: double
+          example: 5.35677
+        longitude:
+          type: number
+          format: double
+          example: -4.00167
+        telephone:
+          type: string
+          example: "+2250102030405"
+        email:
+          type: string
+          format: email
+          example: contact@maquis-joie.ci
+        capacite_accueil:
+          type: integer
+          example: 120
+        horaires_ouverture:
+          type: string
+          example: "Lun-Dim 17h00-02h00"
+        proprietaire_nom:
+          type: string
+          example: Koné Mamadou
+
+    Etablissement:
+      allOf:
+        - $ref: '#/components/schemas/EtablissementCreate'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+            statut:
+              type: string
+              enum: [en_attente, actif, suspendu, inactif]
+              example: actif
+            date_inscription:
+              type: string
+              format: date-time
+              example: "2026-03-01T08:00:00Z"
+            date_validation:
+              type: string
+              format: date-time
+              nullable: true
+              example: "2026-03-02T09:00:00Z"
+            valide_par:
+              type: string
+              format: uuid
+              nullable: true
+              example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+            total_diffusions:
+              type: integer
+              example: 4327
+            derniere_diffusion:
+              type: string
+              format: date-time
+              nullable: true
+              example: "2026-03-28T23:47:00Z"
+            created_at:
+              type: string
+              format: date-time
+              example: "2026-03-01T08:00:00Z"
+
+    EtablissementUpdate:
+      type: object
+      properties:
+        nom:
+          type: string
+        type:
+          type: string
+          enum: [bar, maquis, cave, boite_nuit, restaurant, hotel, autre]
+        adresse:
+          type: string
+        commune:
+          type: string
+        ville:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        telephone:
+          type: string
+        email:
+          type: string
+          format: email
+        capacite_accueil:
+          type: integer
+        horaires_ouverture:
+          type: string
+        proprietaire_nom:
+          type: string
+
+    EtablissementStatutUpdate:
+      type: object
+      required: [statut]
+      properties:
+        statut:
+          type: string
+          enum: [actif, suspendu, inactif]
+          example: suspendu
+        motif:
+          type: string
+          example: Non-conformité aux conditions d'utilisation
+
+    # ── AUDIO & RECONNAISSANCE ─────────────────────────────────────────────────
+    AudioUploadResponse:
+      type: object
+      properties:
+        capture_id:
+          type: string
+          format: uuid
+          example: c3d4e5f6-a7b8-9012-cdef-123456789012
+        statut:
+          type: string
+          enum: [recu, en_traitement, traite, echec]
+          example: recu
+        message:
+          type: string
+          example: Extrait audio reçu, reconnaissance en cours
+        timestamp_reception:
+          type: string
+          format: date-time
+          example: "2026-03-28T23:47:00Z"
+
+    ReconnaissanceResultat:
+      type: object
+      properties:
+        capture_id:
+          type: string
+          format: uuid
+          example: c3d4e5f6-a7b8-9012-cdef-123456789012
+        statut:
+          type: string
+          enum: [identifie, non_identifie, en_traitement, echec]
+          example: identifie
+        score_confiance:
+          type: number
+          format: float
+          description: Score entre 0 et 1
+          example: 0.97
+        musique:
+          $ref: '#/components/schemas/MusiqueInfo'
+        timestamp_capture:
+          type: string
+          format: date-time
+          example: "2026-03-28T23:47:00Z"
+        timestamp_identification:
+          type: string
+          format: date-time
+          example: "2026-03-28T23:47:02Z"
+        duree_diffusion_secondes:
+          type: integer
+          example: 45
+        etablissement_id:
+          type: string
+          format: uuid
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+
+    MusiqueInfo:
+      type: object
+      properties:
+        titre:
+          type: string
+          example: Gnoantre
+        artiste:
+          type: string
+          example: Suspect 95
+        album:
+          type: string
+          nullable: true
+          example: Afro Trap Vol.3
+        isrc:
+          type: string
+          nullable: true
+          example: CIX202300123
+        label:
+          type: string
+          nullable: true
+          example: Afroland Records
+        annee_sortie:
+          type: integer
+          nullable: true
+          example: 2023
+        genre:
+          type: string
+          nullable: true
+          example: Afrobeats
+        duree_totale_secondes:
+          type: integer
+          nullable: true
+          example: 214
+        source_api:
+          type: string
+          enum: [acrcloud, audd]
+          example: acrcloud
+
+    CaptureSync:
+      type: object
+      description: Payload de synchronisation batch depuis le mode offline
+      required: [captures]
+      properties:
+        captures:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            required: [audio_base64, timestamp_capture, duree_secondes]
+            properties:
+              reference_locale:
+                type: string
+                description: ID local généré par l'app mobile
+                example: local-cap-20260328-001
+              audio_base64:
+                type: string
+                format: byte
+                description: Extrait audio encodé en base64 (max 512 Ko)
+                example: SUQzBAAAAAAA...
+              timestamp_capture:
+                type: string
+                format: date-time
+                example: "2026-03-28T21:15:00Z"
+              duree_secondes:
+                type: integer
+                minimum: 10
+                maximum: 60
+                example: 45
+
+    SyncResponse:
+      type: object
+      properties:
+        total_recu:
+          type: integer
+          example: 12
+        total_accepte:
+          type: integer
+          example: 11
+        total_rejete:
+          type: integer
+          example: 1
+        captures:
+          type: array
+          items:
+            type: object
+            properties:
+              reference_locale:
+                type: string
+                example: local-cap-20260328-001
+              capture_id:
+                type: string
+                format: uuid
+                nullable: true
+                example: c3d4e5f6-a7b8-9012-cdef-123456789012
+              statut:
+                type: string
+                enum: [accepte, rejete]
+                example: accepte
+              motif_rejet:
+                type: string
+                nullable: true
+                example: null
+
+    # ── DIFFUSIONS ────────────────────────────────────────────────────────────
+    Diffusion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: d4e5f6a7-b8c9-0123-defa-234567890123
+        etablissement_id:
+          type: string
+          format: uuid
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        etablissement_nom:
+          type: string
+          example: Le Maquis de la Joie
+        capture_id:
+          type: string
+          format: uuid
+          example: c3d4e5f6-a7b8-9012-cdef-123456789012
+        timestamp_diffusion:
+          type: string
+          format: date-time
+          example: "2026-03-28T23:47:00Z"
+        duree_secondes:
+          type: integer
+          example: 45
+        score_confiance:
+          type: number
+          format: float
+          example: 0.97
+        musique:
+          $ref: '#/components/schemas/MusiqueInfo'
+
+    # ── DASHBOARD ─────────────────────────────────────────────────────────────
+    DashboardKPIs:
+      type: object
+      properties:
+        periode:
+          type: object
+          properties:
+            debut:
+              type: string
+              format: date
+              example: "2026-03-01"
+            fin:
+              type: string
+              format: date
+              example: "2026-03-28"
+        etablissements:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 342
+            actifs:
+              type: integer
+              example: 298
+            en_attente:
+              type: integer
+              example: 24
+            suspendus:
+              type: integer
+              example: 20
+            nouveaux_ce_mois:
+              type: integer
+              example: 17
+        diffusions:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 128450
+            ce_mois:
+              type: integer
+              example: 28764
+            aujourd_hui:
+              type: integer
+              example: 1247
+            taux_reconnaissance:
+              type: number
+              format: float
+              description: Pourcentage de captures identifiées avec succès
+              example: 87.4
+        musiques:
+          type: object
+          properties:
+            titres_distincts:
+              type: integer
+              example: 5847
+            artistes_distincts:
+              type: integer
+              example: 1203
+        captures:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 146920
+            identifiees:
+              type: integer
+              example: 128450
+            non_identifiees:
+              type: integer
+              example: 15630
+            en_echec:
+              type: integer
+              example: 2840
+
+    TopMusique:
+      type: object
+      properties:
+        rang:
+          type: integer
+          example: 1
+        musique:
+          $ref: '#/components/schemas/MusiqueInfo'
+        nb_diffusions:
+          type: integer
+          example: 3847
+        nb_etablissements:
+          type: integer
+          description: Nombre d'établissements distincts ayant diffusé ce titre
+          example: 187
+        duree_totale_minutes:
+          type: number
+          format: float
+          example: 2884.25
+
+    TopEtablissement:
+      type: object
+      properties:
+        rang:
+          type: integer
+          example: 1
+        etablissement:
+          $ref: '#/components/schemas/Etablissement'
+        nb_diffusions:
+          type: integer
+          example: 4327
+        nb_titres_distincts:
+          type: integer
+          example: 892
+        duree_totale_minutes:
+          type: number
+          format: float
+          example: 3245.5
+
+    CartePoint:
+      type: object
+      properties:
+        etablissement_id:
+          type: string
+          format: uuid
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        nom:
+          type: string
+          example: Le Maquis de la Joie
+        commune:
+          type: string
+          example: Cocody
+        latitude:
+          type: number
+          format: double
+          example: 5.35677
+        longitude:
+          type: number
+          format: double
+          example: -4.00167
+        statut:
+          type: string
+          enum: [actif, suspendu, en_attente, inactif]
+          example: actif
+        nb_diffusions_aujourd_hui:
+          type: integer
+          example: 47
+        derniere_activite:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-03-28T23:47:00Z"
+
+    EvolutionDiffusions:
+      type: object
+      properties:
+        granularite:
+          type: string
+          enum: [heure, jour, semaine, mois]
+          example: jour
+        serie:
+          type: array
+          items:
+            type: object
+            properties:
+              periode:
+                type: string
+                example: "2026-03-28"
+              nb_diffusions:
+                type: integer
+                example: 4312
+              nb_captures:
+                type: integer
+                example: 4932
+              taux_reconnaissance:
+                type: number
+                format: float
+                example: 87.4
+
+    # ── REPORTING ─────────────────────────────────────────────────────────────
+    RapportRequest:
+      type: object
+      required: [type, date_debut, date_fin]
+      properties:
+        type:
+          type: string
+          enum: [diffusions, etablissements, artistes, global]
+          example: diffusions
+        date_debut:
+          type: string
+          format: date
+          example: "2026-03-01"
+        date_fin:
+          type: string
+          format: date
+          example: "2026-03-31"
+        etablissement_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Filtrer sur un établissement spécifique (admin uniquement)
+          example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+        artiste:
+          type: string
+          nullable: true
+          description: Filtrer par nom d'artiste
+          example: Suspect 95
+        commune:
+          type: string
+          nullable: true
+          example: Cocody
+        format:
+          type: string
+          enum: [pdf, excel, json]
+          default: pdf
+          example: pdf
+
+    RapportJob:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          example: e5f6a7b8-c9d0-1234-efab-345678901234
+        statut:
+          type: string
+          enum: [en_attente, en_cours, termine, erreur]
+          example: en_cours
+        type:
+          type: string
+          example: diffusions
+        format:
+          type: string
+          example: pdf
+        date_debut:
+          type: string
+          format: date
+          example: "2026-03-01"
+        date_fin:
+          type: string
+          format: date
+          example: "2026-03-31"
+        demande_par:
+          type: string
+          format: uuid
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-03-29T09:00:00Z"
+        termine_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-03-29T09:00:08Z"
+        url_telechargement:
+          type: string
+          nullable: true
+          description: URL signée valable 30 minutes
+          example: "https://storage.hmis-project.ci/rapports/rapport-abc.pdf?token=xyz&expires=1743253208"
+
+    # ── COMMUNS ───────────────────────────────────────────────────────────────
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        limite:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 342
+        total_pages:
+          type: integer
+          example: 18
+
+    ErreurResponse:
+      type: object
+      properties:
+        statut:
+          type: integer
+          example: 400
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: Le champ email est requis
+        details:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              champ:
+                type: string
+                example: email
+              message:
+                type: string
+                example: Format d'email invalide
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-03-29T09:00:00Z"
+        trace_id:
+          type: string
+          example: trace-abc123def456
+
+    SuccesMessage:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Opération effectuée avec succès
+
+  # ── RESPONSES ──────────────────────────────────────────────────────────────
+  responses:
+    Unauthorized:
+      description: Non authentifié — token absent, invalide ou expiré
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErreurResponse'
+          example:
+            statut: 401
+            code: UNAUTHORIZED
+            message: Token invalide ou expiré
+            timestamp: "2026-03-29T09:00:00Z"
+            trace_id: trace-abc123
+
+    Forbidden:
+      description: Accès interdit — rôle insuffisant
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErreurResponse'
+          example:
+            statut: 403
+            code: FORBIDDEN
+            message: Vous n'avez pas les droits nécessaires
+            timestamp: "2026-03-29T09:00:00Z"
+            trace_id: trace-abc123
+
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErreurResponse'
+          example:
+            statut: 404
+            code: NOT_FOUND
+            message: Ressource introuvable
+            timestamp: "2026-03-29T09:00:00Z"
+            trace_id: trace-abc123
+
+    ValidationError:
+      description: Erreur de validation des données entrantes
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErreurResponse'
+
+  # ── PARAMETERS ─────────────────────────────────────────────────────────────
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+      description: Numéro de page
+    LimiteParam:
+      name: limite
+      in: query
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+      description: Nombre d'éléments par page
+    DateDebutParam:
+      name: date_debut
+      in: query
+      schema:
+        type: string
+        format: date
+      description: Date de début (YYYY-MM-DD)
+      example: "2026-03-01"
+    DateFinParam:
+      name: date_fin
+      in: query
+      schema:
+        type: string
+        format: date
+      description: Date de fin (YYYY-MM-DD)
+      example: "2026-03-31"
+    EtablissementIdPath:
+      name: etablissement_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Identifiant unique de l'établissement
+      example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+
+security:
+  - BearerAuth: []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────────────────────────────────────
+paths:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # AUTH
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Inscription d'un nouvel utilisateur
+      description: |
+        Crée un compte utilisateur. Le compte est inactif jusqu'à la vérification OTP.
+        Un SMS de vérification est automatiquement envoyé si un numéro est fourni.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              nom: Kouadio Jean-Baptiste
+              email: jean@maquis-joie.ci
+              telephone: "+2250707010101"
+              mot_de_passe: MonMotDePasse#2026
+              role: etablissement
+      responses:
+        "201":
+          description: Compte créé avec succès — vérification OTP requise
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Compte créé. Un code OTP a été envoyé au +2250707010101
+                  utilisateur_id:
+                    type: string
+                    format: uuid
+                    example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "409":
+          description: Email ou téléphone déjà utilisé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErreurResponse'
+              example:
+                statut: 409
+                code: EMAIL_ALREADY_EXISTS
+                message: Un compte avec cet email existe déjà
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Connexion et obtention des tokens JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: jean@maquis-joie.ci
+              mot_de_passe: MonMotDePasse#2026
+      responses:
+        "200":
+          description: Connexion réussie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              example:
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMWIyYzNkNCIsInJvbGUiOiJldGFibGlzc2VtZW50IiwiaWF0IjoxNzQzMjUwMDAwLCJleHAiOjE3NDMyNTA5MDB9.signature
+                refresh_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh.signature
+                expires_in: 900
+                role: etablissement
+                utilisateur_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          description: Identifiants incorrects
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErreurResponse'
+              example:
+                statut: 401
+                code: INVALID_CREDENTIALS
+                message: Email ou mot de passe incorrect
+
+  /auth/otp/envoyer:
+    post:
+      tags: [Auth]
+      summary: Envoyer un OTP SMS
+      description: Envoie un code OTP à 6 chiffres par SMS. Valable 10 minutes.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpSendRequest'
+      responses:
+        "200":
+          description: OTP envoyé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Code OTP envoyé au +2250707010101
+                  expire_dans_secondes:
+                    type: integer
+                    example: 600
+        "429":
+          description: Trop de demandes OTP — attendre avant de réessayer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErreurResponse'
+              example:
+                statut: 429
+                code: OTP_RATE_LIMIT
+                message: Trop de tentatives. Réessayez dans 60 secondes
+
+  /auth/otp/verifier:
+    post:
+      tags: [Auth]
+      summary: Vérifier un code OTP
+      description: Valide le code OTP et active le compte si c'est la première vérification.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpVerifyRequest'
+      responses:
+        "200":
+          description: OTP vérifié avec succès
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/TokenResponse'
+                  - type: object
+                    properties:
+                      telephone_verifie:
+                        type: boolean
+                        example: true
+        "400":
+          description: Code OTP invalide ou expiré
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErreurResponse'
+              example:
+                statut: 400
+                code: INVALID_OTP
+                message: Code OTP invalide ou expiré
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Renouveler l'access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        "200":
+          description: Nouveaux tokens générés
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        "401":
+          description: Refresh token invalide ou révoqué
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErreurResponse'
+              example:
+                statut: 401
+                code: INVALID_REFRESH_TOKEN
+                message: Refresh token invalide ou révoqué
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Déconnexion — révocation du refresh token
+      responses:
+        "200":
+          description: Déconnexion réussie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccesMessage'
+              example:
+                message: Déconnexion réussie
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/mot-de-passe/reinitialiser:
+    post:
+      tags: [Auth]
+      summary: Demander une réinitialisation de mot de passe
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        "200":
+          description: Email de réinitialisation envoyé (si le compte existe)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccesMessage'
+              example:
+                message: Si ce compte existe, un email de réinitialisation a été envoyé
+
+  /auth/mot-de-passe/confirmer:
+    post:
+      tags: [Auth]
+      summary: Confirmer la réinitialisation du mot de passe
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirm'
+      responses:
+        "200":
+          description: Mot de passe réinitialisé avec succès
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccesMessage'
+        "400":
+          description: Token invalide ou expiré
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErreurResponse'
+              example:
+                statut: 400
+                code: INVALID_RESET_TOKEN
+                message: Token de réinitialisation invalide ou expiré
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # UTILISATEURS
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  /utilisateurs:
+    get:
+      tags: [Utilisateurs]
+      summary: Liste tous les utilisateurs
+      description: Réservé aux admins. Supporte filtres et pagination.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimiteParam'
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [admin, etablissement, partenaire]
+          description: Filtrer par rôle
+        - name: actif
+          in: query
+          schema:
+            type: boolean
+          description: Filtrer par statut actif/inactif
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Recherche sur nom ou email
+      responses:
+        "200":
+          description: Liste des utilisateurs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Utilisateur'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+              example:
+                data:
+                  - id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                    nom: Kouadio Jean-Baptiste
+                    email: jean@maquis-joie.ci
+                    telephone: "+2250707010101"
+                    role: etablissement
+                    actif: true
+                    telephone_verifie: true
+                    etablissement_id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                    created_at: "2026-03-01T08:00:00Z"
+                pagination:
+                  page: 1
+                  limite: 20
+                  total: 342
+                  total_pages: 18
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /utilisateurs/moi:
+    get:
+      tags: [Utilisateurs]
+      summary: Profil de l'utilisateur connecté
+      responses:
+        "200":
+          description: Profil retourné
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Utilisateur'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Utilisateurs]
+      summary: Modifier son propre profil
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UtilisateurUpdate'
+            example:
+              nom: Kouadio Jean-Baptiste Modifié
+              telephone: "+2250707010102"
+      responses:
+        "200":
+          description: Profil mis à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Utilisateur'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /utilisateurs/{utilisateur_id}:
+    get:
+      tags: [Utilisateurs]
+      summary: Détails d'un utilisateur (admin)
+      parameters:
+        - name: utilisateur_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Utilisateur trouvé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Utilisateur'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Utilisateurs]
+      summary: Désactiver un compte utilisateur (admin)
+      description: Désactivation logique — les données sont conservées.
+      parameters:
+        - name: utilisateur_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Compte désactivé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccesMessage'
+              example:
+                message: Compte utilisateur désactivé
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ETABLISSEMENTS
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  /etablissements:
+    get:
+      tags: [Etablissements]
+      summary: Liste les établissements
+      description: |
+        - **admin** : tous les établissements avec tous les filtres disponibles
+        - **partenaire** : établissements actifs uniquement
+        - **etablissement** : uniquement son propre établissement
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimiteParam'
+        - name: statut
+          in: query
+          schema:
+            type: string
+            enum: [en_attente, actif, suspendu, inactif]
+          description: Filtrer par statut (admin uniquement)
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [bar, maquis, cave, boite_nuit, restaurant, hotel, autre]
+          description: Filtrer par type d'établissement
+        - name: commune
+          in: query
+          schema:
+            type: string
+          example: Cocody
+          description: Filtrer par commune
+        - name: ville
+          in: query
+          schema:
+            type: string
+          example: Abidjan
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Recherche sur nom ou adresse
+        - $ref: '#/components/parameters/DateDebutParam'
+        - $ref: '#/components/parameters/DateFinParam'
+      responses:
+        "200":
+          description: Liste des établissements
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Etablissement'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+              example:
+                data:
+                  - id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                    nom: Le Maquis de la Joie
+                    type: maquis
+                    adresse: Rue des Jardins, Cocody
+                    commune: Cocody
+                    ville: Abidjan
+                    latitude: 5.35677
+                    longitude: -4.00167
+                    telephone: "+2250102030405"
+                    capacite_accueil: 120
+                    statut: actif
+                    total_diffusions: 4327
+                    derniere_diffusion: "2026-03-28T23:47:00Z"
+                    created_at: "2026-03-01T08:00:00Z"
+                pagination:
+                  page: 1
+                  limite: 20
+                  total: 298
+                  total_pages: 15
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Etablissements]
+      summary: Créer / enregistrer un nouvel établissement
+      description: |
+        - Un **établissement** peut créer son propre profil (lié à son compte).
+        - Un **admin** peut créer un établissement pour n'importe quel compte.
+        Le statut initial est `en_attente` jusqu'à validation admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EtablissementCreate'
+            example:
+              nom: Le Maquis de la Joie
+              type: maquis
+              adresse: Rue des Jardins, Cocody
+              commune: Cocody
+              ville: Abidjan
+              latitude: 5.35677
+              longitude: -4.00167
+              telephone: "+2250102030405"
+              email: contact@maquis-joie.ci
+              capacite_accueil: 120
+              horaires_ouverture: "Lun-Dim 17h00-02h00"
+              proprietaire_nom: Koné Mamadou
+      responses:
+        "201":
+          description: Établissement créé — en attente de validation admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Etablissement'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "409":
+          description: Un établissement avec ce nom existe déjà à cette adresse
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErreurResponse'
+              example:
+                statut: 409
+                code: ETABLISSEMENT_ALREADY_EXISTS
+                message: Un établissement similaire est déjà enregistré à cette adresse
+
+  /etablissements/{etablissement_id}:
+    get:
+      tags: [Etablissements]
+      summary: Détails d'un établissement
+      parameters:
+        - $ref: '#/components/parameters/EtablissementIdPath'
+      responses:
+        "200":
+          description: Établissement trouvé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Etablissement'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Etablissements]
+      summary: Modifier un établissement
+      description: |
+        - **établissement** : peut modifier son propre établissement (hors statut)
+        - **admin** : peut tout modifier
+      parameters:
+        - $ref: '#/components/parameters/EtablissementIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EtablissementUpdate'
+            example:
+              capacite_accueil: 150
+              horaires_ouverture: "Lun-Dim 18h00-03h00"
+      responses:
+        "200":
+          description: Établissement mis à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Etablissement'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Etablissements]
+      summary: Supprimer (désactiver) un établissement (admin)
+      parameters:
+        - $ref: '#/components/parameters/EtablissementIdPath'
+      responses:
+        "200":
+          description: Établissement désactivé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccesMessage'
+              example:
+                message: Établissement désactivé avec succès
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /etablissements/{etablissement_id}/statut:
+    patch:
+      tags: [Etablissements]
+      summary: Changer le statut d'un établissement (admin)
+      description: Valider, suspendre ou désactiver un établissement.
+      parameters:
+        - $ref: '#/components/parameters/EtablissementIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EtablissementStatutUpdate'
+            examples:
+              validation:
+                summary: Valider un établissement en attente
+                value:
+                  statut: actif
+                  motif: Dossier complet et conforme
+              suspension:
+                summary: Suspendre un établissement
+                value:
+                  statut: suspendu
+                  motif: Non-conformité aux conditions d'utilisation
+      responses:
+        "200":
+          description: Statut mis à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Etablissement'
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /etablissements/{etablissement_id}/diffusions:
+    get:
+      tags: [Etablissements]
+      summary: Historique des diffusions d'un établissement
+      parameters:
+        - $ref: '#/components/parameters/EtablissementIdPath'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimiteParam'
+        - $ref: '#/components/parameters/DateDebutParam'
+        - $ref: '#/components/parameters/DateFinParam'
+        - name: artiste
+          in: query
+          schema:
+            type: string
+          description: Filtrer par artiste
+        - name: titre
+          in: query
+          schema:
+            type: string
+          description: Filtrer par titre de musique
+      responses:
+        "200":
+          description: Historique des diffusions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Diffusion'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+              example:
+                data:
+                  - id: d4e5f6a7-b8c9-0123-defa-234567890123
+                    etablissement_id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                    etablissement_nom: Le Maquis de la Joie
+                    timestamp_diffusion: "2026-03-28T23:47:00Z"
+                    duree_secondes: 45
+                    score_confiance: 0.97
+                    musique:
+                      titre: Gnoantre
+                      artiste: Suspect 95
+                      isrc: CIX202300123
+                      genre: Afrobeats
+                      source_api: acrcloud
+                pagination:
+                  page: 1
+                  limite: 20
+                  total: 4327
+                  total_pages: 217
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # AUDIO & RECONNAISSANCE
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  /audio/capturer:
+    post:
+      tags: [Audio & Reconnaissance]
+      summary: Uploader un extrait audio pour reconnaissance (temps réel)
+      description: |
+        Upload d'un seul extrait audio en temps réel depuis l'application mobile.
+        La reconnaissance est effectuée de façon asynchrone. Utilisez
+        `GET /audio/captures/{capture_id}` pour récupérer le résultat.
+
+        **Formats acceptés** : audio/wav, audio/mp4, audio/mpeg, audio/ogg
+        **Taille maximale** : 512 Ko par extrait
+        **Durée** : entre 10 et 60 secondes
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio, etablissement_id, duree_secondes, timestamp_capture]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: Fichier audio (max 512 Ko)
+                etablissement_id:
+                  type: string
+                  format: uuid
+                  description: ID de l'établissement source
+                  example: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                duree_secondes:
+                  type: integer
+                  minimum: 10
+                  maximum: 60
+                  description: Durée réelle de l'extrait capturé
+                  example: 45
+                timestamp_capture:
+                  type: string
+                  format: date-time
+                  description: Horodatage exact de la capture
+                  example: "2026-03-28T23:47:00Z"
+      responses:
+        "202":
+          description: Extrait reçu — reconnaissance en cours
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AudioUploadResponse'
+              example:
+                capture_id: c3d4e5f6-a7b8-9012-cdef-123456789012
+                statut: recu
+                message: Extrait audio reçu, reconnaissance en cours
+                timestamp_reception: "2026-03-28T23:47:00Z"
+        "400":
+          description: Format audio invalide ou fichier trop volumineux
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErreurResponse'
+              example:
+                statut: 400
+                code: INVALID_AUDIO
+                message: Format audio non supporté ou taille > 512 Ko
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: L'établissement ne correspond pas au compte connecté
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErreurResponse'
+        "429":
+          description: Trop de captures en attente pour cet établissement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErreurResponse'
+              example:
+                statut: 429
+                code: CAPTURE_RATE_LIMIT
+                message: Trop de captures en attente. Attendez le traitement des précédentes.
+
+  /audio/sync:
+    post:
+      tags: [Audio & Reconnaissance]
+      summary: Synchronisation batch — mode offline
+      description: |
+        Endpoint dédié à la synchronisation groupée des captures effectuées
+        en mode hors-ligne. Accepte jusqu'à **50 captures** par requête.
+        Les extraits audio sont encodés en **base64** dans le payload JSON.
+        Retourne un statut individuel pour chaque capture.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptureSync'
+            example:
+              captures:
+                - reference_locale: local-cap-20260328-001
+                  audio_base64: SUQzBAAAAAAA...
+                  timestamp_capture: "2026-03-28T21:15:00Z"
+                  duree_secondes: 45
+                - reference_locale: local-cap-20260328-002
+                  audio_base64: SUQzBAAAAAAB...
+                  timestamp_capture: "2026-03-28T21:16:30Z"
+                  duree_secondes: 42
+      responses:
+        "207":
+          description: Résultats mixtes — voir le statut individuel de chaque capture
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResponse'
+              example:
+                total_recu: 2
+                total_accepte: 2
+                total_rejete: 0
+                captures:
+                  - reference_locale: local-cap-20260328-001
+                    capture_id: c3d4e5f6-a7b8-9012-cdef-123456789012
+                    statut: accepte
+                    motif_rejet: null
+                  - reference_locale: local-cap-20260328-002
+                    capture_id: c4d5e6f7-b8c9-0123-defa-234567890123
+                    statut: accepte
+                    motif_rejet: null
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /audio/captures/{capture_id}:
+    get:
+      tags: [Audio & Reconnaissance]
+      summary: Consulter le résultat d'une reconnaissance
+      description: |
+        Retourne le résultat de la reconnaissance pour une capture donnée.
+        Si `statut = en_traitement`, relancer la requête après quelques secondes.
+        Délai habituel de traitement : **< 3 secondes**.
+      parameters:
+        - name: capture_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Identifiant de la capture retourné lors de l'upload
+          example: c3d4e5f6-a7b8-9012-cdef-123456789012
+      responses:
+        "200":
+          description: Résultat de la reconnaissance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconnaissanceResultat'
+              examples:
+                identifie:
+                  summary: Musique identifiée avec succès
+                  value:
+                    capture_id: c3d4e5f6-a7b8-9012-cdef-123456789012
+                    statut: identifie
+                    score_confiance: 0.97
+                    musique:
+                      titre: Gnoantre
+                      artiste: Suspect 95
+                      album: Afro Trap Vol.3
+                      isrc: CIX202300123
+                      label: Afroland Records
+                      annee_sortie: 2023
+                      genre: Afrobeats
+                      duree_totale_secondes: 214
+                      source_api: acrcloud
+                    timestamp_capture: "2026-03-28T23:47:00Z"
+                    timestamp_identification: "2026-03-28T23:47:02Z"
+                    duree_diffusion_secondes: 45
+                    etablissement_id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                en_traitement:
+                  summary: Encore en cours de traitement
+                  value:
+                    capture_id: c3d4e5f6-a7b8-9012-cdef-123456789012
+                    statut: en_traitement
+                    musique: null
+                    timestamp_capture: "2026-03-28T23:47:00Z"
+                    timestamp_identification: null
+                non_identifie:
+                  summary: Musique non reconnue
+                  value:
+                    capture_id: c3d4e5f6-a7b8-9012-cdef-123456789012
+                    statut: non_identifie
+                    score_confiance: 0.0
+                    musique: null
+                    timestamp_capture: "2026-03-28T23:47:00Z"
+                    timestamp_identification: "2026-03-28T23:47:03Z"
+                    duree_diffusion_secondes: 45
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /audio/config:
+    get:
+      tags: [Audio & Reconnaissance]
+      summary: Récupérer la configuration de capture
+      description: |
+        Retourne les paramètres de capture à appliquer par l'application mobile :
+        intervalle, durée, seuil de confiance, fréquence d'échantillonnage, etc.
+        L'application mobile doit appeler cet endpoint au démarrage.
+      responses:
+        "200":
+          description: Configuration de capture
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  intervalle_capture_secondes:
+                    type: integer
+                    description: Délai entre deux captures
+                    example: 60
+                  duree_capture_secondes:
+                    type: integer
+                    description: Durée de chaque extrait capturé
+                    example: 45
+                  seuil_confiance_minimum:
+                    type: number
+                    format: float
+                    description: Score en dessous duquel la diffusion n'est pas loguée
+                    example: 0.60
+                  max_captures_offline:
+                    type: integer
+                    description: Nombre max de captures stockées en mode offline
+                    example: 200
+                  format_audio_prefere:
+                    type: string
+                    enum: [wav, mp4, ogg]
+                    example: wav
+                  frequence_echantillonnage_hz:
+                    type: integer
+                    example: 44100
+              example:
+                intervalle_capture_secondes: 60
+                duree_capture_secondes: 45
+                seuil_confiance_minimum: 0.60
+                max_captures_offline: 200
+                format_audio_prefere: wav
+                frequence_echantillonnage_hz: 44100
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # DASHBOARD
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  /dashboard/kpis:
+    get:
+      tags: [Dashboard]
+      summary: KPIs globaux du tableau de bord
+      description: |
+        Retourne les indicateurs clés de performance pour la période donnée.
+        - **admin** : données globales de tous les établissements
+        - **partenaire** : données agrégées anonymisées
+        - **etablissement** : données de son propre établissement uniquement
+      parameters:
+        - $ref: '#/components/parameters/DateDebutParam'
+        - $ref: '#/components/parameters/DateFinParam'
+        - name: commune
+          in: query
+          schema:
+            type: string
+          description: Filtrer par commune (admin uniquement)
+          example: Cocody
+      responses:
+        "200":
+          description: KPIs retournés
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardKPIs'
+              example:
+                periode:
+                  debut: "2026-03-01"
+                  fin: "2026-03-28"
+                etablissements:
+                  total: 342
+                  actifs: 298
+                  en_attente: 24
+                  suspendus: 20
+                  nouveaux_ce_mois: 17
+                diffusions:
+                  total: 128450
+                  ce_mois: 28764
+                  aujourd_hui: 1247
+                  taux_reconnaissance: 87.4
+                musiques:
+                  titres_distincts: 5847
+                  artistes_distincts: 1203
+                captures:
+                  total: 146920
+                  identifiees: 128450
+                  non_identifiees: 15630
+                  en_echec: 2840
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /dashboard/top-musiques:
+    get:
+      tags: [Dashboard]
+      summary: Top des musiques les plus diffusées
+      parameters:
+        - $ref: '#/components/parameters/DateDebutParam'
+        - $ref: '#/components/parameters/DateFinParam'
+        - name: limite
+          in: query
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+          description: Nombre de titres à retourner
+        - name: commune
+          in: query
+          schema:
+            type: string
+          description: Filtrer par commune (admin uniquement)
+        - name: genre
+          in: query
+          schema:
+            type: string
+          description: Filtrer par genre musical
+          example: Afrobeats
+      responses:
+        "200":
+          description: Top musiques
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  periode:
+                    type: object
+                    properties:
+                      debut:
+                        type: string
+                        format: date
+                      fin:
+                        type: string
+                        format: date
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TopMusique'
+              example:
+                periode:
+                  debut: "2026-03-01"
+                  fin: "2026-03-28"
+                data:
+                  - rang: 1
+                    musique:
+                      titre: Gnoantre
+                      artiste: Suspect 95
+                      genre: Afrobeats
+                      isrc: CIX202300123
+                    nb_diffusions: 3847
+                    nb_etablissements: 187
+                    duree_totale_minutes: 2884.25
+                  - rang: 2
+                    musique:
+                      titre: Bété Bété
+                      artiste: Josey
+                      genre: Afropop
+                      isrc: CIX202200456
+                    nb_diffusions: 3102
+                    nb_etablissements: 154
+                    duree_totale_minutes: 2326.5
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /dashboard/top-etablissements:
+    get:
+      tags: [Dashboard]
+      summary: Top des établissements les plus actifs (admin)
+      parameters:
+        - $ref: '#/components/parameters/DateDebutParam'
+        - $ref: '#/components/parameters/DateFinParam'
+        - name: limite
+          in: query
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 50
+        - name: commune
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [bar, maquis, cave, boite_nuit, restaurant, hotel, autre]
+      responses:
+        "200":
+          description: Top établissements
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TopEtablissement'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /dashboard/carte:
+    get:
+      tags: [Dashboard]
+      summary: Données géolocalisées pour la carte de diffusion
+      description: |
+        Retourne la liste des établissements avec leurs coordonnées GPS,
+        leur statut et leur activité récente. Optimisé pour affichage cartographique.
+      parameters:
+        - name: statut
+          in: query
+          schema:
+            type: string
+            enum: [actif, suspendu, en_attente, inactif, tous]
+            default: actif
+        - name: commune
+          in: query
+          schema:
+            type: string
+        - name: actif_depuis_heures
+          in: query
+          schema:
+            type: integer
+          description: Filtrer les établissements actifs dans les N dernières heures
+          example: 24
+      responses:
+        "200":
+          description: Points cartographiques
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 298
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CartePoint'
+              example:
+                total: 2
+                data:
+                  - etablissement_id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                    nom: Le Maquis de la Joie
+                    commune: Cocody
+                    latitude: 5.35677
+                    longitude: -4.00167
+                    statut: actif
+                    nb_diffusions_aujourd_hui: 47
+                    derniere_activite: "2026-03-28T23:47:00Z"
+                  - etablissement_id: c3d4e5f6-a7b8-9012-cdef-123456789013
+                    nom: Bar Le Phénix
+                    commune: Plateau
+                    latitude: 5.32184
+                    longitude: -4.01773
+                    statut: actif
+                    nb_diffusions_aujourd_hui: 31
+                    derniere_activite: "2026-03-28T23:30:00Z"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /dashboard/evolution:
+    get:
+      tags: [Dashboard]
+      summary: Évolution temporelle des diffusions
+      description: Série temporelle du nombre de diffusions pour les graphiques.
+      parameters:
+        - $ref: '#/components/parameters/DateDebutParam'
+        - $ref: '#/components/parameters/DateFinParam'
+        - name: granularite
+          in: query
+          schema:
+            type: string
+            enum: [heure, jour, semaine, mois]
+            default: jour
+          description: Granularité de la série temporelle
+        - name: etablissement_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filtrer sur un établissement (admin)
+      responses:
+        "200":
+          description: Série temporelle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvolutionDiffusions'
+              example:
+                granularite: jour
+                serie:
+                  - periode: "2026-03-26"
+                    nb_diffusions: 4102
+                    nb_captures: 4721
+                    taux_reconnaissance: 86.9
+                  - periode: "2026-03-27"
+                    nb_diffusions: 4318
+                    nb_captures: 4945
+                    taux_reconnaissance: 87.3
+                  - periode: "2026-03-28"
+                    nb_diffusions: 4312
+                    nb_captures: 4932
+                    taux_reconnaissance: 87.4
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # REPORTING
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  /rapports:
+    post:
+      tags: [Reporting]
+      summary: Demander la génération d'un rapport
+      description: |
+        Lance la génération asynchrone d'un rapport. La génération peut prendre
+        quelques secondes à quelques minutes selon le volume de données.
+        Utilisez `GET /rapports/{job_id}` pour vérifier l'avancement et
+        récupérer l'URL de téléchargement une fois le rapport prêt.
+
+        **Formats disponibles** : `pdf` (mise en page pro), `excel` (données brutes), `json` (API)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RapportRequest'
+            examples:
+              rapport_mensuel_global:
+                summary: Rapport mensuel global (admin)
+                value:
+                  type: global
+                  date_debut: "2026-03-01"
+                  date_fin: "2026-03-31"
+                  format: pdf
+              rapport_diffusions_etablissement:
+                summary: Rapport diffusions d'un établissement
+                value:
+                  type: diffusions
+                  date_debut: "2026-03-01"
+                  date_fin: "2026-03-31"
+                  etablissement_id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+                  format: excel
+              rapport_artiste:
+                summary: Rapport par artiste
+                value:
+                  type: artistes
+                  date_debut: "2026-03-01"
+                  date_fin: "2026-03-31"
+                  artiste: Suspect 95
+                  format: pdf
+      responses:
+        "202":
+          description: Génération du rapport lancée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RapportJob'
+              example:
+                job_id: e5f6a7b8-c9d0-1234-efab-345678901234
+                statut: en_attente
+                type: global
+                format: pdf
+                date_debut: "2026-03-01"
+                date_fin: "2026-03-31"
+                demande_par: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+                created_at: "2026-03-29T09:00:00Z"
+                termine_at: null
+                url_telechargement: null
+        "400":
+          $ref: '#/components/responses/ValidationError'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+    get:
+      tags: [Reporting]
+      summary: Historique des rapports générés
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimiteParam'
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [diffusions, etablissements, artistes, global]
+        - name: statut
+          in: query
+          schema:
+            type: string
+            enum: [en_attente, en_cours, termine, erreur]
+      responses:
+        "200":
+          description: Liste des rapports
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RapportJob'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /rapports/{job_id}:
+    get:
+      tags: [Reporting]
+      summary: Statut et téléchargement d'un rapport
+      description: |
+        Retourne l'état actuel du rapport. Quand `statut = termine`,
+        le champ `url_telechargement` contient une URL signée valable **30 minutes**.
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: e5f6a7b8-c9d0-1234-efab-345678901234
+      responses:
+        "200":
+          description: Statut du rapport
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RapportJob'
+              examples:
+                en_cours:
+                  summary: Rapport en cours de génération
+                  value:
+                    job_id: e5f6a7b8-c9d0-1234-efab-345678901234
+                    statut: en_cours
+                    type: global
+                    format: pdf
+                    created_at: "2026-03-29T09:00:00Z"
+                    termine_at: null
+                    url_telechargement: null
+                termine:
+                  summary: Rapport prêt au téléchargement
+                  value:
+                    job_id: e5f6a7b8-c9d0-1234-efab-345678901234
+                    statut: termine
+                    type: global
+                    format: pdf
+                    created_at: "2026-03-29T09:00:00Z"
+                    termine_at: "2026-03-29T09:00:08Z"
+                    url_telechargement: "https://storage.hmis-project.ci/rapports/rapport-e5f6.pdf?token=xyz&expires=1743253208"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
