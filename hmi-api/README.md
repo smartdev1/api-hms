@@ -1,98 +1,96 @@
 <p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
+  <br />
+  <h1 align="center">🎵 HMIS Backend API</h1>
+  <strong>Hankes Music Intelligence System - Core Infrastructure</strong>
+  <br />
 </p>
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+## 📖 Description
+L'API Backend du système HMIS (Hankes Music Intelligence System) gère le traitement des captures audio en temps réel pour l'identification musicale dans des établissements tels que les bars, les boîtes de nuit et les hôtels. 
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+L’outil est conçu pour extraire les analytiques d'écoutes selon la demande des partenaires étatiques (ex: BURIDA) tout en assurant une sécurité sans faille via NestJS, des jetons JWT fractionnés, et une protection CORS + Rate Limit stricte.
 
-## Description
+## ⚙️ Stack Technologique
+* **Framework :** [NestJS](https://nestjs.com/) (TypeScript)
+* **Base de Données :** [MongoDB Atlas](https://www.mongodb.com/atlas/database)
+* **ORM :** [Prisma (v6)](https://www.prisma.io/)
+* **Authentification :** JWT / Passport
+* **Validation des Payloads :** Class-Validator / Class-Transformer
+* **Sécurité Additionnelle :** Helmet, Express Multer, ThrottlerModule
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+---
 
-## Project setup
+## 🛠️ Installation & Démarrage
 
+### 1. Cloner & Préparer les Dépendances
+Rendez-vous à la racine du dossier API (`hmi-api`) :
 ```bash
 $ npm install
 ```
 
-## Compile and run the project
-
+**⚠️ Attention Spéciale (Prisma & MongoDB) :**  
+Puisque le projet utilise MongoDB, assurez-vous de figer les versions compatibles de Prisma pour éviter les instabilités du moteur (Prisma 7.x ne supportant plus temporairement Mongo).
 ```bash
-# development
-$ npm run start
+$ npm install prisma@6 @prisma/client@6
+```
 
-# watch mode
+### 2. Formater votre `.env`
+Créez un fichier `.env` à la base du projet (à côté de `package.json`) et remplissez-le ainsi :
+
+```env
+# URL De Connexion MongoDB Atlas - Remplacez <user> et <password>
+DATABASE_URL="mongodb+srv://<votre_utilisateur>:<votre_mot_de_passe>@cluster0.qqxypj8.mongodb.net/hmis_db?retryWrites=true&w=majority"
+
+# Clé Secrète pour l'Authentification JWT
+JWT_SECRET="MonSuperMotDePasseSecretHmIs2026!"
+
+# Port du Serveur (Défaut: 3000)
+PORT=3000
+```
+
+### 3. Synchronisation de la Base de Données
+Une fois votre `.env` défini, synchronisez la structure de votre backend NestJS sur votre cluster MongoDB Atlas :
+```bash
+# Générer le lient de typage de Prisma :
+$ npx prisma generate
+
+# Pousser les modèles sur Atlas :
+$ npx prisma db push
+```
+
+### 4. Lancer le Serveur (Development)
+```bash
 $ npm run start:dev
+```
+Vos requêtes peuvent dorénavant être testées sur `http://localhost:3000/v1/...`
 
-# production mode
-$ npm run start:prod
+---
+
+## 📂 Architecture des Modules
+
+Le code source a une structure modulaire stricte injectée dynamiquement dans le `AppModule`.
+
+| Module | Description & Rôle |
+| ------ | ----------- |
+| **`AuthModule`** | Distribution des JWT, Inscription/Login, Envoi et Vérification d'OTPs, Routage des RBAC (`@Roles()`). |
+| **`UtilisateursModule`** | Opérations CRUD, Pagination et filtrages par rôles sur la table `Utilisateur`. Interception `CurrentUser()`. |
+| **`EtablissementsModule`** | Logique de validation d'activités, suspension ou approbation pour les hôtels et bars partenaires. |
+| **`AudioModule`** | Entrée sécurisée Multipart-form limitant le poids à `512 Ko`. Contient l'intelligence d'indexation locale hors-ligne / en-ligne ! |
+| **`DiffusionsModule`** | Stockage analytique liant un `Etablissement` et un titre identifié via ACRCloud / AudD. |
+| **`DashboardModule`** | Récolte de Statistiques (Top titres de la journée, écoutes globales, métriques en temps réel). |
+| **`ReportingModule`** | Module chargé des exports administratifs CSV / JSON sur demande pour la BURIDA. |
+
+---
+
+## 🛡️ Rôles & Sécurité
+Les endpoints sont protégés sous plusieurs couches via d'exigeantes défenses NestJS. L’Accès global est limité par **Rate Limiting** avec un seuil de saturation sur des connexions abusives.
+
+Les rôles d'utilisateurs (`admin`, `etablissement`, `partenaire`) sont appliqués dynamiquement en en-tête des Contrôleurs :
+```typescript
+@Roles(Role.admin) // Seul un administrateur HMIS accède à la ressource
+@Get('statistiques')
 ```
 
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+## 📬 Contact & Maintenances
+Ce système représente le squelette dynamique HMIS sur Node.JS 
+**Statut actuel :** `Prêt pour la production (Phase Alpha)`

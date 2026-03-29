@@ -11,9 +11,13 @@ import { AudioModule } from './audio/audio.module';
 import { DiffusionsModule } from './diffusions/diffusions.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportingModule } from './reporting/reporting.module';
+import { ConfigModule } from '@nestjs/config';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
     ThrottlerModule.forRoot([
       {
         ttl: 60000,
